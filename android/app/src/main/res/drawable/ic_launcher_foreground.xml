@@ -1,0 +1,7 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Gold convertible side silhouette on the dark background. -->
+    <path android:fillColor="#D8A928" android:pathData="M14,72 L20,60 Q22,55 27,54 L39,51 L47,41 Q49,38 53,38 L68,38 Q72,38 74,41 L80,51 L90,54 Q96,56 96,61 L96,72 Z"/>
+    <path android:fillColor="#1A1A1A" android:pathData="M51,42 L67,42 L72,51 L46,51 Z"/>
+    <path android:fillColor="#1A1A1A" android:strokeColor="#D8A928" android:strokeWidth="2" android:pathData="M33,72a8,8 0,1 0,0.1 0 Z"/>
+    <path android:fillColor="#1A1A1A" android:strokeColor="#D8A928" android:strokeWidth="2" android:pathData="M77,72a8,8 0,1 0,0.1 0 Z"/>
+</vector>
