@@ -7,9 +7,12 @@ side owns app updates through GitHub.
 
 - Package: `com.jeremyshanebrook.convertibletoppricing`
 - App label: Convertible Top Pricing
-- Version: 1.0.0 (versionCode 1)
+- Version: 1.0.1 (versionCode 2)
 - Catalog: 19,450 rows (Robbins 10,648 / GAHH 1,886 / EZON 6,916), MSRP +
   labor (hours × Settings rate), bundled in the page — works fully offline.
+  One card per supplier per vehicle; cascading dropdowns (part type / top
+  style / window type / material / color / zipper / rain rail / drip rail /
+  part) with leave-one-out bidirectional filtering.
 - The labor rate persists in the WebView's localStorage
   (`ctp-labor-rate-cents`), same key as the desktop build.
 
@@ -27,7 +30,7 @@ Use the installed Gradle binary, not `./gradlew`. Output:
 release filename — a new filename per rebuild, including the versionCode:
 
 ```
-ConvertibleTopPricing-v1.0.0-code1.apk
+ConvertibleTopPricing-v1.0.1-code2.apk
 ```
 
 Reusing a filename makes Android stop recognizing the download as
@@ -51,10 +54,10 @@ key: future versions would no longer install over this one.
 
 ```json
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "app_changed": true,
   "desktop_download": "ConvertibleTopPricing-Desktop.html",
-  "android_apk": "https://github.com/JeremyShanebrook/Convertible-Top-Pricing/releases/download/v1.0.0/ConvertibleTopPricing-v1.0.0-code1.apk",
+  "android_apk": "https://github.com/JeremyShanebrook/Convertible-Top-Pricing/releases/download/v1.0.1/ConvertibleTopPricing-v1.0.1-code2.apk",
   "release_notes": "..."
 }
 ```
