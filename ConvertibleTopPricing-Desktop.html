@@ -214,21 +214,23 @@ window.CTP = {"dicts":{"make":["Nissan","Honda","Buick","Chevrolet","Oldsmobile"
 <script>
 "use strict";
 /* ============================================================
-   Convertible Top Pricing — Desktop edition.
+   Convertible Top Pricing — Desktop edition, version 1.0.1.
    Same bundled catalog and rules as the phone app: 19,450
    MSRP-only listings from Robbins, GAHH, and EZON (Electron
-   excluded), one card per manufacturer per vehicle per part
-   (top+window combo / top only / window only / other parts),
-   window-type, material, and color dropdowns on the detail
-   page, Robbins materials and prices from the Robbins 2026
-   price book only (never the website), Robbins 2026
-   price-book labor for every supplier, and the Robbins 2026
-   catalog notes
-   matched to each top. Listings that come in original and
-   non-original styles say so on the card — original style
-   first, with style, rain-rail, and drip-rail lines above
-   the window-type line. Everything runs in this page — the
-   catalog ships with it and lookup needs no connection.
+   excluded), ONE card per manufacturer per vehicle, and inside
+   the card a stack of cascading dropdowns (part type, top
+   style, window type, material, color, zipper, rain rail,
+   drip rail, part) — each pick narrows the others to
+   combinations that really exist, a dimension with one
+   possible value shows as a decided line, and one with none
+   hides, so the part number, MSRP, labor, and total always
+   match the full selection. Robbins materials and prices come
+   from the Robbins 2026 price book only (never the website),
+   Robbins 2026 price-book labor for every supplier, and the
+   Robbins 2026 catalog notes matched to each top. Original
+   style sorts first wherever styles vary. Everything runs in
+   this page — the catalog ships with it and lookup needs no
+   connection.
    ============================================================ */
 
 var SUPPLIERS = ["Robbins", "GAHH", "EZON"];
@@ -598,8 +600,6 @@ function isOtherPartRow(r) {
   }
   return false;
 }
-var LISTING_LABEL = { combo: "Top + window", top: "Top only", window: "Window only", standard: "Top", accessory: "Accessory" };
-var LISTING_RANK = { combo: 0, top: 1, standard: 2, window: 3, accessory: 4 };
 /* ---------- style labels on cards (Nov 16, 2026, as the phone app) ----------
    Within the listing order, original-style tops sort FIRST:
    isOriginalStyle true → null → false, regardless of catalog
@@ -623,11 +623,6 @@ function rainRailLabelFor(v) { return v ? (RAIN_RAIL_LABELS[v] || null) : null; 
 /* The drip-rail line is its own line, never merged into the
    rain-rail line (EZON D-suffix Miata tops only). */
 function dripRailLabelFor(v) { return v === "with" ? "With drip rail" : null; }
-function listingKindFor(r) {
-  if (isOtherPartRow(r)) return "accessory";
-  var k = partKindFor(r);
-  return k === "other" ? "standard" : k;
-}
 function clusterByOverlappingYears(list) {
   var dated = list.filter(function (r) { return r.yearStart != null; }).sort(function (a, b) {
     return (a.yearStart - b.yearStart) || ((a.yearEnd != null ? a.yearEnd : a.yearStart) - (b.yearEnd != null ? b.yearEnd : b.yearStart));
@@ -742,7 +737,74 @@ function byOptionOrder(a, b) {
     colorLabelFor(a).localeCompare(colorLabelFor(b)) ||
     (a.sku || "").localeCompare(b.sku || "");
 }
+/* ---------- cascade dimensions (v1.0.1 one-card redesign) ----------
+   Per Jeremy's v1.0.1 rule, search results show ONE card per supplier
+   per vehicle — no split into per-part listings. Inside the card, a
+   stack of dropdowns (part type → top style → window type → material
+   → color → zipper → rain rail → drip rail → part) cascades: each
+   dropdown lists only the values that still exist among the rows
+   matching all OTHER current selections (leave-one-out), so no option
+   is ever a dead end. The dimensions below are derived from the
+   existing row fields only — no data changes (validated against the
+   real catalog by scripts/cascade_prototype.py: 888 multi-row cards,
+   0 dead options). */
+function cascadePartTypeFor(r) {
+  var k = partKindFor(r);
+  if (k === "combo") return "combo";
+  if (k === "top") return "top";
+  if (k === "window") return "window";
+  return isOtherPartRow(r) ? "other" : "top";
+}
+/* Zipper: no zipper field exists in the data — it is derived from the
+   style label + variant label + window type text. The no/non forms
+   are checked FIRST ("NON-Zippered" must not read as "with zipper").
+   No mention anywhere → null (unknown): the Zipper dimension then
+   hides for that selection instead of claiming a value (e.g. the
+   Robbins book never mentions a zipper for the Miata 2904 Streamline
+   family, so picking that style hides Zipper; the 2916 family's own
+   text says "no zipper", which shows as a decided line). */
+function zipperValueFor(r) {
+  if (partKindFor(r) === "window") return null;
+  var t = [r.styleLabel, r.variantLabel, r.windowType]
+    .filter(function (s) { return s != null; }).join(" ").toLowerCase();
+  if (/no[ -]?zip|non[ -]?zip|without zip/.test(t)) return "no zipper";
+  if (t.indexOf("zip") !== -1) return "with zipper";
+  return null;
+}
+/* Other-part category (the Part dropdown, Other parts only), from the
+   core prefix / variant text. "Side curtains" is its own category;
+   the residual "other parts" covers rows that match no category
+   (brackets, arms, bushings…). */
+function otherPartValueFor(r) {
+  var v = r.variantLabel.toLowerCase();
+  var core = (r.coreNumber || "").toUpperCase();
+  if (core.indexOf("CBL") === 0 || v.indexOf("cable") !== -1) return "cables";
+  if (core.indexOf("HL") === 0 || v.indexOf("headliner") !== -1) return "headliners";
+  if (v.indexOf("boot cover") !== -1 || v.indexOf("top boot") !== -1 || core.indexOf("B1") === 0)
+    return "boot covers";
+  if (v.indexOf("well liner") !== -1) return "well liners";
+  if (v.indexOf("pad") !== -1) return "pads";
+  if (v.indexOf("curtain") !== -1) return "side curtains";
+  if (v.indexOf("strap") !== -1) return "straps";
+  if (v.indexOf("rain rail") !== -1 || core === "29RR") return "rain rails";
+  if (v.indexOf("tonneau") !== -1) return "tonneau covers";
+  return "other parts";
+}
+function toCascadeRow(r) {
+  var pk = partKindFor(r);
+  var partType = cascadePartTypeFor(r);
+  var o = toColorOption(r);
+  o.partType = partType;
+  o.styleValue = pk === "window" ? null : r.styleLabel;
+  o.windowValue = (pk === "combo" || pk === "top" || pk === "window") ? windowCategoryFor(r) : null;
+  o.zipperValue = zipperValueFor(r);
+  o.otherPartValue = partType === "other" ? otherPartValueFor(r) : null;
+  return o;
+}
 function buildGroups(rowsIn, query) {
+  /* REMOVE every listing with no material listed — at query time, so
+     stored rows, monthly price updates, and labor data are untouched
+     and the removal applies catalog-wide, for every vehicle. */
   var usable = rowsIn.filter(hasMaterial);
   var byVehicle = new Map();
   usable.forEach(function (r) {
@@ -752,6 +814,9 @@ function buildGroups(rowsIn, query) {
   });
   var q = query ? query.trim().toLowerCase() : "";
   var groups = [];
+  /* Cluster start year per group, so the cards of one vehicle stay
+     adjacent in the results even when a cluster's own year range is
+     narrower than the vehicle's. */
   var clusterStartOf = {};
   byVehicle.forEach(function (vehicleRows, vehicleKey) {
     clusterByOverlappingYears(vehicleRows).forEach(function (cluster) {
@@ -762,142 +827,56 @@ function buildGroups(rowsIn, query) {
       var firstClusterRow = cluster[0];
       if (!firstClusterRow) return;
       var canon = firstClusterRow.canon;
+      /* Vehicle-level Robbins catalog notes are the same for every
+         card of the vehicle, so compute them once per cluster. */
       var clusterNotes = bookNotesFor(firstClusterRow.supplier, canon.make, canon.model, clusterYearStart, clusterYearEnd, cluster);
-      /* Split the cluster into one listing per part: combo, top-only,
-         window-only, standard top, accessory. Combo and window
-         listings are additionally split by part family (the core
-         number's digits), so the window types of ONE top share a
-         listing — and its window-type dropdown — while unrelated
-         window families stay separate listings. */
-      var partitions = new Map();
-      cluster.forEach(function (r) {
-        var k = listingKindFor(r);
-        var family = "";
-        if (k === "combo" || k === "window") {
-          var digits = (r.coreNumber || "").match(/(\d+)/);
-          family = digits ? digits[1] : "";
-        }
-        var pk = k + "|" + family;
-        if (!partitions.has(pk)) partitions.set(pk, { kind: k, rows: [] });
-        partitions.get(pk).rows.push(r);
+      /* ONE card per supplier per vehicle (v1.0.1): the whole
+         cluster is the card — no split into per-part listings. Rows
+         are ordered original-style-first, then by the established
+         option order (material, color, SKU), so the cascade's
+         displayed row for any full selection is the first matching
+         row in this order. The card carries every row with its
+         cascade dimension values; the detail page runs the
+         leave-one-out cascade over them. */
+      var sorted = cluster.slice().sort(function (a, b) {
+        return originalStyleRank(a) - originalStyleRank(b) || byOptionOrder(a, b);
       });
-      /* Rows of one product share one core number, but suppliers
-         record the window type on only some colors of a top, which
-         would split one top into a combo listing and a standard
-         listing. Absorb a standard partition into the combo (or
-         top-only) partition that carries the same core numbers. */
-      Array.from(partitions.entries()).forEach(function (entry) {
-        var pk = entry[0], p = entry[1];
-        if (p.kind !== "standard") return;
-        var cores = {};
-        p.rows.forEach(function (r) {
-          var c = (r.coreNumber || "").toUpperCase();
-          if (c) cores[c] = true;
-        });
-        if (Object.keys(cores).length === 0) return;
-        var target = null;
-        partitions.forEach(function (t) {
-          if (target) return;
-          if ((t.kind === "combo" || t.kind === "top") &&
-              t.rows.some(function (r) { return !!cores[(r.coreNumber || "").toUpperCase()]; }))
-            target = t;
-        });
-        if (target) {
-          target.rows.push.apply(target.rows, p.rows);
-          partitions.delete(pk);
-        }
-      });
-      var windowRows = [];
-      partitions.forEach(function (p) {
-        if (p.kind === "window") windowRows.push.apply(windowRows, p.rows);
-      });
-      windowRows.sort(byOptionOrder);
-      partitions.forEach(function (p, partitionKey) {
-        var kind = p.kind;
-        /* Original-style rows lead combo and top listings, so the
-           listing's default (headline) row is the factory-style
-           top whenever the supplier sells one. */
-        var isTopKind = kind === "combo" || kind === "top" || kind === "standard";
-        var sorted = p.rows.slice().sort(function (a, b) {
-          return isTopKind
-            ? (originalStyleRank(a) - originalStyleRank(b) || byOptionOrder(a, b))
-            : byOptionOrder(a, b);
-        });
-        var first = sorted[0];
-        if (!first) return;
-        var firstOut = toOptionOut(first);
-        var starts = sorted.map(function (r) { return r.yearStart; }).filter(function (y) { return y != null; });
-        var ends = sorted.map(function (r) { return r.yearEnd != null ? r.yearEnd : r.yearStart; }).filter(function (y) { return y != null; });
-        var yearStart = starts.length ? Math.min.apply(null, starts) : null;
-        var yearEnd = ends.length ? Math.max.apply(null, ends) : null;
-        var key = [vehicleKey,
-          clusterYearStart == null ? "" : clusterYearStart,
-          clusterYearEnd == null ? "" : clusterYearEnd,
-          partitionKey,
-          yearStart == null ? "" : yearStart,
-          yearEnd == null ? "" : yearEnd].join("|");
-        var presentCats = {};
+      var first = sorted[0];
+      if (!first) return;
+      var starts = sorted.map(function (r) { return r.yearStart; }).filter(function (y) { return y != null; });
+      var ends = sorted.map(function (r) { return r.yearEnd != null ? r.yearEnd : r.yearStart; }).filter(function (y) { return y != null; });
+      var yearStart = starts.length ? Math.min.apply(null, starts) : null;
+      var yearEnd = ends.length ? Math.max.apply(null, ends) : null;
+      var key = [vehicleKey,
+        clusterYearStart == null ? "" : clusterYearStart,
+        clusterYearEnd == null ? "" : clusterYearEnd,
+        yearStart == null ? "" : yearStart,
+        yearEnd == null ? "" : yearEnd].join("|");
+      var prices = sorted.map(function (r) { return r.priceMsrpCents; }).filter(function (pp) { return pp != null; });
+      /* A free-text search that names a part number opens the card on
+         that exact row's combination. */
+      var matched = null;
+      if (q.length > 0) {
         sorted.forEach(function (r) {
-          var c = windowCategoryFor(r);
-          if (c) presentCats[c] = true;
+          if (!matched && ((r.sku || "").toLowerCase().indexOf(q) !== -1 || (r.coreNumber || "").toLowerCase() === q))
+            matched = r;
         });
-        var windowCategories = WINDOW_CATEGORY_ORDER.filter(function (c) { return !!presentCats[c]; });
-        var materials = [];
-        sorted.forEach(function (r) {
-          var mm = r.material.trim();
-          if (materials.indexOf(mm) === -1) materials.push(mm);
-        });
-        var prices = sorted.map(function (r) { return r.priceMsrpCents; }).filter(function (pp) { return pp != null; });
-        var windowCounts = {};
-        sorted.forEach(function (r) { if (r.windowType) windowCounts[r.windowType] = (windowCounts[r.windowType] || 0) + 1; });
-        var windowType = null, bestCount = -1;
-        Object.keys(windowCounts).forEach(function (w) {
-          if (windowCounts[w] > bestCount) { bestCount = windowCounts[w]; windowType = w; }
-        });
-        var matched = null;
-        if (q.length > 0) {
-          sorted.forEach(function (r) {
-            if (!matched && ((r.sku || "").toLowerCase().indexOf(q) !== -1 || (r.coreNumber || "").toLowerCase() === q))
-              matched = r;
-          });
-        }
-        var defaultRow = matched || first;
-        var laborRow = null;
-        sorted.forEach(function (r) { if (!laborRow && r.laborHours != null) laborRow = r; });
-        /* Card style lines (combo and top listings only — window
-           listings keep their window-type line and get no style
-           line): the style label of the listing's headline row,
-           with the rain-rail and drip-rail lines taken from the
-           first row of the listing that carries them. */
-        var styleCandidates = isTopKind ? [defaultRow].concat(sorted) : [];
-        var topStyleLabel = null, rainRailLabel = null, dripRailLabel = null;
-        styleCandidates.forEach(function (r) { if (!topStyleLabel && r.styleLabel) topStyleLabel = r.styleLabel; });
-        styleCandidates.forEach(function (r) { if (!rainRailLabel) rainRailLabel = rainRailLabelFor(r.rainRail); });
-        styleCandidates.forEach(function (r) { if (!dripRailLabel) dripRailLabel = dripRailLabelFor(r.dripRail); });
-        var groupOriginalRank = Math.min.apply(null, sorted.map(function (r) { return originalStyleRank(r); }));
-        groups.push({
-          groupKey: key, supplier: first.supplier, yearStart: yearStart, yearEnd: yearEnd,
-          make: canon.make, model: canon.model,
-          listingKind: kind, listingLabel: LISTING_LABEL[kind], windowCategories: windowCategories,
-          material: defaultRow.material, materials: materials, materialCount: materials.length,
-          defaultMaterial: defaultRow.material, windowType: windowType, coreNumber: null,
-          styleLabel: materials.length + " material" + (materials.length === 1 ? "" : "s") + " · " +
-            sorted.length + " option" + (sorted.length === 1 ? "" : "s"),
-          topStyleLabel: topStyleLabel, rainRailLabel: rainRailLabel,
-          dripRailLabel: dripRailLabel, originalStyleRank: groupOriginalRank,
-          colorCount: sorted.length,
-          minPriceCents: prices.length ? Math.min.apply(null, prices) : null,
-          maxPriceCents: prices.length ? Math.max.apply(null, prices) : null,
-          laborHours: laborRow ? laborRow.laborHours : null,
-          laborSource: laborRow ? laborRow.laborSource : null,
-          originalMaterial: firstOut.originalMaterial, originalColors: firstOut.originalColors,
-          defaultOptionId: defaultRow.id,
-          colors: sorted.map(toColorOption),
-          windowOptions: (kind === "top" || kind === "standard") ? windowRows.map(toColorOption) : [],
-          bookNotes: clusterNotes
-        });
-        clusterStartOf[key] = clusterYearStart != null ? clusterYearStart : 0;
+      }
+      groups.push({
+        groupKey: key, supplier: first.supplier, yearStart: yearStart, yearEnd: yearEnd,
+        make: canon.make, model: canon.model, optionCount: sorted.length,
+        minPriceCents: prices.length ? Math.min.apply(null, prices) : null,
+        maxPriceCents: prices.length ? Math.max.apply(null, prices) : null,
+        matchedOptionId: matched ? matched.id : null,
+        rows: sorted.map(toCascadeRow),
+        /* The card's window-only pieces, for the "Add the matching
+           window" add-on on Top only selections (they are also
+           reachable in the cascade itself under Part type →
+           Window only). */
+        windowOptions: sorted.filter(function (r) { return cascadePartTypeFor(r) === "window"; }).map(toColorOption),
+        bookNotes: clusterNotes
       });
+      clusterStartOf[key] = clusterYearStart != null ? clusterYearStart : 0;
     });
   });
   var supplierOrder = { Robbins: 0, GAHH: 1, EZON: 2 };
@@ -905,11 +884,9 @@ function buildGroups(rowsIn, query) {
     return supplierOrder[a.supplier] - supplierOrder[b.supplier] ||
       (clusterStartOf[a.groupKey] || 0) - (clusterStartOf[b.groupKey] || 0) ||
       a.make.localeCompare(b.make) || a.model.localeCompare(b.model) ||
-      LISTING_RANK[a.listingKind] - LISTING_RANK[b.listingKind] ||
-      a.originalStyleRank - b.originalStyleRank ||
       (a.yearStart || 0) - (b.yearStart || 0) ||
       Number(a.minPriceCents == null) - Number(b.minPriceCents == null) ||
-      a.styleLabel.localeCompare(b.styleLabel);
+      a.groupKey.localeCompare(b.groupKey);
   });
   return groups;
 }
@@ -1030,7 +1007,7 @@ function persistRate() {
     if (v != null && v !== "" && isFinite(Number(v))) state.rateCents = Number(v);
   } catch (e) {}
 })();
-var detail = null; /* {material, optionId, winForId, winChecked, winId} */
+var detail = null; /* {picks, priority, winForId, winChecked, winId} */
 var DET = null;    /* detail render context for event handlers */
 var LAST_GROUPS = {};
 var lookupScroll = 0;
@@ -1135,45 +1112,23 @@ function renderLookup() {
 }
 
 function groupCardHtml(g) {
-  var r = currentRate();
-  var laborCost = g.laborHours != null && r != null ? g.laborHours * r : null;
-  var totalFrom = g.minPriceCents != null ? g.minPriceCents / 100 + (laborCost || 0) : null;
   var priceVaries = g.minPriceCents != null && g.maxPriceCents != null && g.maxPriceCents !== g.minPriceCents;
-  var preview = g.materials.slice(0, 3);
   var h = '<article class="card" data-open="' + esc(g.groupKey) + '"><div class="row"><div style="min-width:0">';
   h += '<p style="margin:0"><span class="badge">' + esc(g.supplier) + '</span> ' +
-    '<span class="chip-hot">' + esc(g.listingLabel) + '</span> ' +
     '<span class="yr mono">' + esc(yearLabel(g)) + '</span> ' +
-    '<span class="chip2">' + g.materialCount + " material" + (g.materialCount === 1 ? "" : "s") + "</span></p>";
+    '<span class="chip2">' + g.optionCount + " option" + (g.optionCount === 1 ? "" : "s") + "</span></p>";
   h += "<h3>" + esc(g.make) + " " + esc(g.model) + "</h3>";
-  h += '<p class="mats">' + esc(preview.join(", ")) +
-    (g.materials.length > preview.length ? " +" + (g.materials.length - preview.length) + " more" : "") + "</p>";
-  if ((g.listingKind === "combo" || g.listingKind === "top" || g.listingKind === "standard") && g.topStyleLabel) {
-    h += '<p class="mats" style="font-weight:600">' + esc(g.topStyleLabel) + "</p>";
-  }
-  if ((g.listingKind === "window" || g.listingKind === "combo") && g.windowCategories.length > 0) {
-    h += '<p class="mats" style="color:var(--dim)">Window: ' + esc(g.windowCategories.join(" · ")) + "</p>";
-  }
-  if ((g.listingKind === "combo" || g.listingKind === "top" || g.listingKind === "standard") && g.rainRailLabel) {
-    h += '<p class="mats" style="color:var(--dim)">' + esc(g.rainRailLabel) + "</p>";
-  }
-  if ((g.listingKind === "combo" || g.listingKind === "top" || g.listingKind === "standard") && g.dripRailLabel) {
-    h += '<p class="mats" style="color:var(--dim)">' + esc(g.dripRailLabel) + "</p>";
-  }
-  h += '</div><div class="right mono"><p class="cap" style="margin:0">' + (priceVaries ? "MSRP from" : "MSRP") + "</p>";
+  h += '</div><div class="right mono"><p class="cap" style="margin:0">' + (priceVaries ? "MSRP range" : "MSRP") + "</p>";
   if (g.minPriceCents != null) {
-    h += '<p class="price" style="margin:0">' + money0.format(g.minPriceCents / 100) + "</p>";
+    h += '<p class="price" style="margin:0">' + money0.format(g.minPriceCents / 100) +
+      (priceVaries && g.maxPriceCents != null ? " – " + money0.format(g.maxPriceCents / 100) : "") + "</p>";
   } else {
     h += '<p style="margin:0;font-size:14px;color:var(--dim)">Not listed</p>';
   }
-  if (totalFrom != null) {
-    h += '<p class="total">Total ' + (priceVaries ? "from " : "") + money.format(totalFrom) +
-      (g.laborHours != null ? " · " + fmtHours(g.laborHours) + " labor" : "") + "</p>";
-  }
   h += "</div></div>";
-  h += '<button class="open" data-open="' + esc(g.groupKey) + '" aria-label="View the ' +
-    esc(g.listingLabel) + " listing for " + esc(g.make) + " " + esc(g.model) + ", " + esc(g.supplier) +
-    '">View ' + esc(g.listingLabel.toLowerCase()) + " →</button>";
+  h += '<button class="open" data-open="' + esc(g.groupKey) + '" aria-label="View ' + esc(g.supplier) +
+    " options for " + esc(g.make) + " " + esc(g.model) +
+    '">View options →</button>';
   h += "</article>";
   return h;
 }
@@ -1197,7 +1152,7 @@ function updateResults() {
       '" aria-pressed="' + (state.supplier === c.supplier) + '">' + c.supplier + " · " + c.count.toLocaleString() + "</button>";
   });
   h += "</div>";
-  h += '<p class="status" role="status">' + res.total.toLocaleString() + " listing" + (res.total === 1 ? "" : "s") +
+  h += '<p class="status" role="status">' + res.total.toLocaleString() + " card" + (res.total === 1 ? "" : "s") +
     (state.make ? " for " + esc(state.make) : "") + (state.model ? " " + esc(state.model) : "") +
     (state.year ? " · " + esc(state.year) : "") + " — page " + res.page + " of " + res.pageCount.toLocaleString() + "</p>";
   if (res.total === 0) {
@@ -1238,32 +1193,246 @@ function coreSuffix(core) {
   var mm = core ? String(core).match(/(\d+)$/) : null;
   return mm ? mm[1] : null;
 }
-/* Rows whose window type is not recorded stay visible under every
-   window type in the window-type dropdown's scope. */
-function inWinScope(c, cat) {
-  return cat == null || c.windowCategory === cat || c.windowCategory == null;
+
+/* ---------- cascading dropdowns (v1.0.1) ----------
+   One card per supplier per vehicle. Inside the card, a stack of
+   dropdowns — part type, top style, window type, material, color,
+   zipper, rain rail, drip rail, part — cascades with leave-one-out
+   filtering: each dropdown lists only the values that still exist
+   among the rows matching all OTHER current selections. Picking a
+   one-piece top removes "with zipper" from the zipper choices (or
+   hides Zipper entirely where no zipper is recorded for it), picking
+   a material narrows the window types, and picking a window type
+   narrows material and color — both directions, no dead options. A
+   selection that stops being valid is cleared (iterated to a fixed
+   point); a dimension left with one possible value auto-selects and
+   shows as a decided line, not a dropdown; a dimension with no
+   recorded values hides — an unknown is never shown as a choice.
+   A row whose value on a dimension is unrecorded is compatible with
+   any selection on that dimension (it is not a different value, just
+   unrecorded — e.g. the S2000 2540C rows carry no rain-rail value
+   while their siblings say reuse-OEM): it stays reachable, and if a
+   pick narrows the card to only such rows, the dimension's selection
+   clears instead of claiming a value the row does not carry. The
+   displayed row prefers rows that exactly carry every selection.
+   Defaults walk the stack top-down in the original-style-first
+   ordering, so the page always shows one complete valid selection
+   with an exact part number, MSRP, labor hours, and total. */
+var STACK = ["part_type", "top_style", "window_type", "material", "color",
+  "zipper", "rain_rail", "drip_rail", "other_part"];
+/* In the handful of cards where rows with no recorded style mix with
+   styled rows of the same part type, the unstyled rows group under
+   this Top style option so they stay reachable. In all-unstyled
+   cells the Top style step hides entirely — no label is invented. */
+var STANDARD_STYLE = "Standard style";
+var DIM_LABEL = {
+  part_type: "Part type", top_style: "Top style", window_type: "Window type",
+  material: "Material", color: "Color", zipper: "Zipper",
+  rain_rail: "Rain rail", drip_rail: "Drip rail", other_part: "Part"
+};
+var PART_TYPE_LABEL = { combo: "Top + window combo", top: "Top only", window: "Window only", other: "Other parts" };
+var PART_TYPE_ORDER = ["combo", "top", "window", "other"];
+var WINDOW_ORDER = ["Heated glass", "Non-heated glass", "Plastic window", "Blank curtain"];
+var ZIPPER_ORDER = ["with zipper", "no zipper"];
+var RAIN_RAIL_ORDER = ["with", "without", "reuse_oem"];
+var OTHER_PART_ORDER = ["cables", "headliners", "boot covers", "well liners", "pads",
+  "side curtains", "straps", "rain rails", "tonneau covers", "other parts"];
+function dimDisplay(dim, value) {
+  if (dim === "part_type") return PART_TYPE_LABEL[value] || value;
+  if (dim === "zipper") return value === "with zipper" ? "With zipper" : value === "no zipper" ? "No zipper" : value;
+  if (dim === "rain_rail") return rainRailLabelFor(value) || value;
+  if (dim === "drip_rail") return value === "with" ? "With drip rail" : value;
+  if (dim === "other_part") return value.charAt(0).toUpperCase() + value.slice(1);
+  return value;
 }
+function dimValue(r, dim, styleMixed) {
+  if (dim === "part_type") return r.partType;
+  if (dim === "top_style") {
+    if (r.styleValue != null) return r.styleValue;
+    return styleMixed[r.partType] ? STANDARD_STYLE : null;
+  }
+  if (dim === "window_type") return r.windowValue;
+  if (dim === "material") return r.material != null && r.material.trim() !== "" ? r.material : null;
+  if (dim === "color") return r.colorLabel;
+  if (dim === "zipper") return r.zipperValue;
+  if (dim === "rain_rail") return r.rainRail;
+  if (dim === "drip_rail") return r.dripRail;
+  if (dim === "other_part") return r.otherPartValue;
+  return null;
+}
+function styleMixedFor(rows) {
+  var byPart = {}, mixed = {};
+  rows.forEach(function (r) {
+    var e = byPart[r.partType] || (byPart[r.partType] = { labeled: false, plain: false });
+    if (r.styleValue != null) e.labeled = true; else e.plain = true;
+  });
+  Object.keys(byPart).forEach(function (pt) {
+    if (byPart[pt].labeled && byPart[pt].plain) mixed[pt] = true;
+  });
+  return mixed;
+}
+function optionsFor(rows, sel, dim, styleMixed) {
+  var pool = rows.filter(function (r) {
+    return STACK.every(function (d) {
+      if (d === dim || sel[d] == null) return true;
+      var v = dimValue(r, d, styleMixed);
+      return v === sel[d] || v == null;
+    });
+  });
+  var seen = {}, vals = [];
+  pool.forEach(function (r) {
+    var v = dimValue(r, dim, styleMixed);
+    if (v != null && !seen[v]) { seen[v] = true; vals.push(v); }
+  });
+  var orderPos = function (order) {
+    return function (v) { var i = order.indexOf(v); return i === -1 ? order.length : i; };
+  };
+  /* Rows arrive ordered original-style-first, then material / color /
+     SKU, so a value's first pool row is its rank for default picks. */
+  var bestPos = function (v) {
+    for (var i = 0; i < pool.length; i++) if (dimValue(pool[i], dim, styleMixed) === v) return i;
+    return pool.length;
+  };
+  var cmpStr = function (a, b) { return a < b ? -1 : a > b ? 1 : 0; };
+  var list = vals;
+  if (dim === "part_type") {
+    list.sort(function (a, b) { return orderPos(PART_TYPE_ORDER)(a) - orderPos(PART_TYPE_ORDER)(b); });
+  } else if (dim === "window_type") {
+    list.sort(function (a, b) { return orderPos(WINDOW_ORDER)(a) - orderPos(WINDOW_ORDER)(b); });
+  } else if (dim === "zipper") {
+    list.sort(function (a, b) { return orderPos(ZIPPER_ORDER)(a) - orderPos(ZIPPER_ORDER)(b); });
+  } else if (dim === "rain_rail") {
+    list.sort(function (a, b) { return orderPos(RAIN_RAIL_ORDER)(a) - orderPos(RAIN_RAIL_ORDER)(b); });
+  } else if (dim === "other_part") {
+    list.sort(function (a, b) {
+      return orderPos(OTHER_PART_ORDER)(a) - orderPos(OTHER_PART_ORDER)(b) || cmpStr(a, b);
+    });
+  } else if (dim === "top_style") {
+    list.sort(function (a, b) {
+      var rankOf = function (v) {
+        var m = Infinity;
+        pool.forEach(function (r) {
+          if (dimValue(r, dim, styleMixed) === v) m = Math.min(m, originalStyleRank(r));
+        });
+        return m;
+      };
+      return rankOf(a) - rankOf(b) || cmpStr(a, b);
+    });
+  } else if (dim === "material") {
+    list.sort(function (a, b) {
+      return ((a === "Accessory" ? 1 : 0) - (b === "Accessory" ? 1 : 0)) ||
+        (bestPos(a) - bestPos(b)) || cmpStr(a, b);
+    });
+  } else {
+    list.sort(function (a, b) { return (bestPos(a) - bestPos(b)) || cmpStr(a, b); });
+  }
+  return list;
+}
+/* Only the user's own picks are selections. The complete selection
+   the page displays is DERIVED: walk the stack top-down, keep each
+   pick, and fill every unpicked dimension with its first option
+   (original-style-first ordering), recomputing after each fill. A
+   dropdown's options are computed against the picks plus the
+   displayed values of the dimensions ABOVE it — so an auto-filled
+   color never hides a material the user could still choose, while a
+   window pick still narrows the material dropdown below it and a
+   material pick narrows the window dropdown above it. When a pick is
+   made, picks it invalidates are cleared (most-downstream first,
+   iterating to a fixed point); the pick just made is cleared only if
+   it is still impossible after everything else clears. */
+function resolvePicks(rows, picks, styleMixed, priority) {
+  var sel = {};
+  Object.keys(picks).forEach(function (k) { sel[k] = picks[k]; });
+  var downstreamFirst = STACK.slice().reverse();
+  var clearPass = function (dims) {
+    for (var i = 0; i < 10; i++) {
+      var changed = false;
+      dims.forEach(function (d) {
+        var v = sel[d];
+        if (v == null) return;
+        if (optionsFor(rows, sel, d, styleMixed).indexOf(v) === -1) {
+          delete sel[d];
+          changed = true;
+        }
+      });
+      if (!changed) break;
+    }
+  };
+  if (priority != null) {
+    clearPass(downstreamFirst.filter(function (d) { return d !== priority; }));
+    var pv = sel[priority];
+    if (pv != null && optionsFor(rows, sel, priority, styleMixed).indexOf(pv) === -1) {
+      delete sel[priority];
+      clearPass(downstreamFirst);
+    }
+  } else {
+    clearPass(downstreamFirst);
+  }
+  return sel;
+}
+function displaySelections(rows, picks, styleMixed) {
+  var disp = {};
+  STACK.forEach(function (d) {
+    if (picks[d] != null) { disp[d] = picks[d]; return; }
+    var ctx = {};
+    Object.keys(picks).forEach(function (k) { ctx[k] = picks[k]; });
+    Object.keys(disp).forEach(function (k) { ctx[k] = disp[k]; });
+    var opts = optionsFor(rows, ctx, d, styleMixed);
+    if (opts.length > 0) disp[d] = opts[0];
+  });
+  return disp;
+}
+/* The options a dropdown offers: values that exist among rows
+   matching the picks and the displayed values of the dimensions
+   above this one (leave-one-out on this dimension itself). */
+function renderOptions(rows, picks, disp, dim, styleMixed) {
+  var ctx = {};
+  Object.keys(picks).forEach(function (k) { ctx[k] = picks[k]; });
+  for (var i = 0; i < STACK.length; i++) {
+    var d = STACK[i];
+    if (d === dim) break;
+    if (disp[d] != null) ctx[d] = disp[d];
+  }
+  return optionsFor(rows, ctx, dim, styleMixed);
+}
+function matchingRows(rows, sel, styleMixed) {
+  var compatible = rows.filter(function (r) {
+    return STACK.every(function (d) {
+      if (sel[d] == null) return true;
+      var v = dimValue(r, d, styleMixed);
+      return v === sel[d] || v == null;
+    });
+  });
+  /* Prefer rows that exactly carry every selection; rows that are
+     merely compatible (unrecorded on some selected dimension) are
+     the fallback, in the same order. */
+  var exact = compatible.filter(function (r) {
+    return STACK.every(function (d) {
+      return sel[d] == null || dimValue(r, d, styleMixed) === sel[d];
+    });
+  });
+  return exact.length > 0 ? exact : compatible;
+}
+
 function openDetail(g) {
   lookupScroll = window.scrollY || 0;
   state.group = g;
-  var defOpt = null;
-  g.colors.forEach(function (c) { if (c.id === g.defaultOptionId) defOpt = c; });
-  if (!defOpt) defOpt = g.colors[0];
-  var initialWinCat = (defOpt && defOpt.windowCategory &&
-      g.windowCategories.indexOf(defOpt.windowCategory) !== -1)
-    ? defOpt.windowCategory : (g.windowCategories[0] || null);
-  var initialOpt = null;
-  if (defOpt && inWinScope(defOpt, initialWinCat)) initialOpt = defOpt;
-  if (!initialOpt) {
-    g.colors.forEach(function (c) { if (!initialOpt && inWinScope(c, initialWinCat)) initialOpt = c; });
+  var rows = g.rows;
+  var styleMixed = styleMixedFor(rows);
+  /* A search that named a part number opens the card on that exact
+     row's combination; otherwise the cascade defaults apply. */
+  var initialPicks = {};
+  if (g.matchedOptionId != null) {
+    var mr = null;
+    rows.forEach(function (x) { if (x.id === g.matchedOptionId) mr = x; });
+    if (mr) {
+      STACK.forEach(function (d) {
+        var v = dimValue(mr, d, styleMixed);
+        if (v != null) initialPicks[d] = v;
+      });
+    }
   }
-  detail = {
-    winCat: initialWinCat,
-    material: (initialOpt && initialOpt.material) || g.defaultMaterial ||
-      (defOpt && defOpt.material) || g.materials[0] || "",
-    optionId: initialOpt ? initialOpt.id : g.defaultOptionId,
-    winForId: -1, winChecked: false, winId: null
-  };
+  detail = { picks: initialPicks, priority: null, winForId: -1, winChecked: false, winId: null };
   state.view = "detail";
   render();
   window.scrollTo(0, 0);
@@ -1272,33 +1441,20 @@ function renderDetail() {
   var g = state.group;
   var r = currentRate();
   var catalog = ROBBINS_CATALOG.general;
-  /* Window type first (when this listing offers more than one), then
-     material: the selected window type and material narrow the color
-     dropdown and change the price. */
-  var scopedColors = g.colors.filter(function (c) { return inWinScope(c, detail.winCat); });
-  var scopedMaterials = g.materials.filter(function (m) {
-    return scopedColors.some(function (c) { return c.material === m; });
-  });
-  if (scopedMaterials.length > 0 && scopedMaterials.indexOf(detail.material) === -1)
-    detail.material = scopedMaterials[0];
-  var materialColors = scopedColors.filter(function (c) { return c.material === detail.material; });
-  var o = null;
-  materialColors.forEach(function (c) { if (c.id === detail.optionId) o = c; });
-  if (!o) o = materialColors[0];
+  var rows = g.rows;
+  var styleMixed = styleMixedFor(rows);
+  var picks = resolvePicks(rows, detail.picks, styleMixed, detail.priority);
+  var disp = displaySelections(rows, picks, styleMixed);
+  var matching = matchingRows(rows, disp, styleMixed);
+  var o = matching[0];
   if (!o) { state.view = "lookup"; renderLookup(); return; }
-
-  var labelCounts = {};
-  materialColors.forEach(function (c) { labelCounts[c.colorLabel] = (labelCounts[c.colorLabel] || 0) + 1; });
-  var optionLabel = function (c) {
-    return labelCounts[c.colorLabel] > 1 && c.sku ? c.colorLabel + " — " + c.sku : c.colorLabel;
-  };
 
   /* Matching windows come only from this vehicle's own window-only
      rows (same supplier + vehicle + year cluster), carried on the
      group as windowOptions — never from combo rows. */
   var windowCandidates = g.windowOptions || [];
   var windowPool = [];
-  if ((o.partKind === "top" || o.partKind === "other") && windowCandidates.length > 0) {
+  if (disp.part_type === "top" && (o.partKind === "top" || o.partKind === "other") && windowCandidates.length > 0) {
     var suf = coreSuffix(o.coreNumber);
     var bySuffix = suf ? windowCandidates.filter(function (c) { return coreSuffix(c.coreNumber) === suf; }) : [];
     var pool = bySuffix.length > 0 ? bySuffix : windowCandidates;
@@ -1326,73 +1482,50 @@ function renderDetail() {
   var total = dispMsrpCents != null ? dispMsrpCents / 100 + (laborCost || 0) : null;
 
   var details = [];
+  details.push(["Part type", dimDisplay("part_type", disp.part_type != null ? disp.part_type : o.partType)]);
   if (o.material) details.push(["Material", o.material + " — " + o.colorLabel]);
   else details.push(["Color", o.colorLabel]);
-  if (g.listingKind === "combo") details.push(["Top/window", "Top + window combo — window included"]);
-  else if (g.listingKind === "top") details.push(["Top/window",
-    win ? "Top only + matching window (" + (win.sku || "window") + ") added above"
-        : "Top only — the window is a separate part, listed on its own as Window only"]);
-  else if (g.listingKind === "window") details.push(["Top/window", "Window only — the top is a separate listing"]);
-  else if (g.listingKind === "standard" && win) details.push(["Top/window",
-    "Top + matching window (" + (win.sku || "window") + ") added above"]);
+  if (disp.part_type === "combo")
+    details.push(["Top/window", "Top + window combo — window included"]);
+  else if (disp.part_type === "top")
+    details.push(["Top/window",
+      win ? "Top only + matching window (" + (win.sku || "window") + ") added above"
+          : "Top only — the window is a separate part, under Part type → Window only"]);
+  else if (disp.part_type === "window")
+    details.push(["Top/window", "Window only — the top is under Part type → Top only"]);
   if (o.laborHours != null && o.laborSource) details.push(["Labor time from", o.laborSource]);
   if (win && win.laborHours != null && win.laborSource) details.push(["Window labor from", win.laborSource]);
-  if (detail.winCat && g.windowCategories.length > 1) details.push(["Window type", detail.winCat]);
-  else if (o.windowType) details.push(["Window", o.windowType]);
+  if (o.windowType) details.push(["Window", o.windowType]);
   if (o.originalMaterial) details.push(["Original material", o.originalMaterial]);
   if (o.originalColors.length > 0) details.push(["Original colors", o.originalColors.join(", ")]);
   if (o.variantLabel) details.push(["Supplier description", o.variantLabel]);
-
-  var subText = "";
-  if (g.listingKind === "combo")
-    subText = g.supplier + " top + window combo for this vehicle — the window is included in this listing. Pick a window type, then a material, then a color.";
-  else if (g.listingKind === "top")
-    subText = g.supplier + " top only for this vehicle — the window is a separate part: it has its own Window only listing, and you can add the matching window below. Pick a material, then a color.";
-  else if (g.listingKind === "window")
-    subText = g.supplier + " window only for this vehicle — for replacing just the window; the top is a separate listing. Pick a window type, then a material, then a color.";
-  else if (g.listingKind === "accessory")
-    subText = g.supplier + " accessory for this vehicle — pick an option below.";
-  else
-    subText = g.supplier + " top for this vehicle — pick a material, then a color.";
 
   var h = '<div class="detailwrap">';
   h += '<button class="btn backbtn" id="d-back" aria-label="Back to results">← Back to results</button>';
   h += '<article class="detail">';
   h += '<p style="margin:0"><span class="badge">' + esc(g.supplier) + '</span> ' +
-    '<span class="chip-hot">' + esc(g.listingLabel) + '</span> ' +
-    '<span class="yr mono">' + esc(yearLabel(g)) + "</span></p>";
+    '<span class="yr mono">' + esc(yearLabel(g)) + '</span> ' +
+    '<span class="chip2">' + g.optionCount + " option" + (g.optionCount === 1 ? "" : "s") + "</span></p>";
   h += "<h2>" + esc(g.make) + " " + esc(g.model) + "</h2>";
-  h += '<p class="sub">' + esc(subText) + "</p>";
+  h += '<p class="sub">Everything ' + esc(g.supplier) + ' lists for this vehicle is on this one card. Each dropdown below narrows the others to combinations that exist, and the part number, price, and labor are for the full selection.</p>';
 
-  if (g.windowCategories.length > 1) {
-    h += '<label class="lab" for="window-picker">WINDOW TYPE</label>';
-    h += '<select class="field" id="window-picker" aria-label="Window type">' +
-      g.windowCategories.map(function (cat) {
-        var rep = null;
-        g.colors.forEach(function (c) { if (!rep && c.windowCategory === cat) rep = c; });
-        return '<option value="' + esc(cat) + '"' + (cat === detail.winCat ? " selected" : "") + ">" +
-          esc(cat) + (rep && rep.coreNumber ? " — " + esc(rep.coreNumber) : "") + "</option>";
+  STACK.forEach(function (dim) {
+    var opts = renderOptions(rows, picks, disp, dim, styleMixed);
+    if (opts.length === 0) return;
+    var value = disp[dim];
+    if (value == null) return;
+    if (opts.length === 1) {
+      h += '<div style="margin-top:16px"><p style="margin:0;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--dim)">' +
+        esc(DIM_LABEL[dim].toUpperCase()) + '</p><p style="margin:4px 0 0;font-size:16px;font-weight:500">' +
+        esc(dimDisplay(dim, value)) + "</p></div>";
+      return;
+    }
+    h += '<label class="lab" for="dim-' + dim + '">' + esc(DIM_LABEL[dim].toUpperCase()) + "</label>";
+    h += '<select class="field" id="dim-' + dim + '" aria-label="' + esc(DIM_LABEL[dim]) + '">' +
+      opts.map(function (v) {
+        return '<option value="' + esc(v) + '"' + (v === value ? " selected" : "") + ">" + esc(dimDisplay(dim, v)) + "</option>";
       }).join("") + "</select>";
-    h += '<p class="fineprint" style="margin-top:6px;font-size:14px">One listing for every window type this part comes with — the part number and price below are for the selected type.</p>';
-  }
-
-  h += '<label class="lab" for="material-picker">MATERIAL</label>';
-  h += '<select class="field" id="material-picker" aria-label="Material">' +
-    scopedMaterials.map(function (mm) {
-      return '<option value="' + esc(mm) + '"' + (mm === detail.material ? " selected" : "") + ">" + esc(mm) + "</option>";
-    }).join("") + "</select>";
-
-  h += '<label class="lab" for="color-picker">COLOR</label>';
-  h += '<select class="field" id="color-picker" aria-label="Color">' +
-    materialColors.map(function (c) {
-      return '<option value="' + c.id + '"' + (c.id === o.id ? " selected" : "") + ">" + esc(optionLabel(c)) + "</option>";
-    }).join("") + "</select>";
-  var anyRealColor = materialColors.some(function (c) { return c.colorLabel !== "Color not listed"; });
-  h += '<p class="fineprint" style="margin-top:6px;font-size:14px">' +
-    (anyRealColor
-      ? materialColors.length + " option" + (materialColors.length === 1 ? "" : "s") + " in " + esc(detail.material) +
-        " — the part number, price, and notes below are for the selected option."
-      : "This material doesn't break out colors — the part number, price, and notes below are for the selected listing itself.") + "</p>";
+  });
 
   if (windowPool.length > 0 && shownWin) {
     h += '<div class="winbox"><label class="check"><input type="checkbox" id="win-check" aria-label="Add matching window"' +
@@ -1490,33 +1623,17 @@ function renderDetail() {
     render();
     window.scrollTo(0, lookupScroll);
   });
-  var winTypePicker = document.getElementById("window-picker");
-  if (winTypePicker) winTypePicker.addEventListener("change", function (e) {
-    var next = e.target.value;
-    detail.winCat = next;
-    var scope = g.colors.filter(function (c) { return inWinScope(c, next); });
-    var target = null;
-    scope.forEach(function (c) { if (!target && c.material === detail.material) target = c; });
-    if (!target) target = scope[0];
-    if (target) {
-      if (target.material) detail.material = target.material;
-      detail.optionId = target.id;
-    }
-    renderDetail();
-  });
-  document.getElementById("material-picker").addEventListener("change", function (e) {
-    detail.material = e.target.value;
-    var firstForMaterial = null;
-    g.colors.forEach(function (c) {
-      if (!firstForMaterial && inWinScope(c, detail.winCat) && c.material === detail.material)
-        firstForMaterial = c;
+  STACK.forEach(function (dim) {
+    var sel = document.getElementById("dim-" + dim);
+    if (!sel) return;
+    sel.addEventListener("change", function (e) {
+      var next = {};
+      Object.keys(picks).forEach(function (k) { next[k] = picks[k]; });
+      next[dim] = e.target.value;
+      detail.picks = next;
+      detail.priority = dim;
+      renderDetail();
     });
-    if (firstForMaterial) detail.optionId = firstForMaterial.id;
-    renderDetail();
-  });
-  document.getElementById("color-picker").addEventListener("change", function (e) {
-    detail.optionId = Number(e.target.value);
-    renderDetail();
   });
   var winCheck = document.getElementById("win-check");
   if (winCheck) winCheck.addEventListener("change", function (e) {
@@ -1536,6 +1653,7 @@ function renderDetail() {
     state.view = "settings"; render(); window.scrollTo(0, 0);
   });
 }
+
 
 
 /* ---------- suppliers view ---------- */
@@ -1580,8 +1698,8 @@ function renderSettings() {
     "<li>Robbins prices come from the Robbins 2026 price book (effective Mar 1, 2026). Where the book prices a top’s material, the catalog price is used — it wins over the website price, higher or lower.</li>" +
     "<li>Labor cost is the top’s install hours × your rate above; the total on each top is MSRP + labor.</li>" +
     "<li>Labor hours come from the Robbins 2026 price book: the book’s time for a part is the time used for that part from every supplier, and all materials of a top share that one time — they are on the same line in the book. GAHH and EZON times are used only for parts the book doesn’t time; then the higher of the two is used, and the material choice doesn’t change it. Where no source publishes a time, the labor stays blank — it is never estimated.</li>" +
-    "<li>Results are listed per manufacturer, per vehicle, per part. On a listing’s page, pick the material, then the color — the part number, price, and total follow the selection. Listings with no material recorded are not shown.</li>" +
-    "<li>For two-part tops, each piece is its own listing: the top+window combo, the top only, and the window only are listed separately (combo first) whenever the manufacturer sells them, so you can price replacing just the top or just the window. On a top-only listing you can also add the matching window, and its price and labor join the total. Where a window or combo comes in more than one window type — heated glass, non-heated glass, plastic window — the listing’s page has one window-type dropdown that switches the part number and price, instead of a separate listing per type.</li>" +
+    "<li>Results show ONE card per manufacturer per vehicle — no separate card per part or per style. Open a card and work down its dropdowns: part type, top style, window type, material, color, and the rest. Every pick narrows the other dropdowns to combinations that actually exist (picking a one-piece top removes the zipper choices it excludes; picking a material narrows the colors and window types, and the other way around), a choice that is the only one left shows as a decided line instead of a dropdown, and the part number, price, labor, and total always match the full selection. Listings with no material recorded are not shown.</li>" +
+    "<li>For two-part tops, Part type is where the pieces live: “Top + window combo”, “Top only”, and “Window only” price the pieces together or on their own, whenever the manufacturer sells them that way. On a Top only selection you can also add the matching window, and its price and labor join the total. Window type — heated glass, non-heated glass, plastic window — is its own dropdown and filters with everything else.</li>" +
     "<li>Robbins materials come from the Robbins 2026 price book only — never the website — and the book’s other parts (side-tension cables, headliners, top pads, well liners, bow straps, weather strips, window sections) are listed under their vehicles for Robbins and GAHH, the same as EZON’s.</li>" +
     "<li>The catalog is built into this file and works with no connection. Prices are re-checked monthly: a supplier’s prices move only when sample listings agree on the same percentage change.</li>" +
     "</ul></div>";
@@ -1641,7 +1759,7 @@ function renderSettings() {
      when an old version.json has no desktop_download field.)
    Every check fails silently when offline; the bundled catalog always
    works with no connection. */
-var APP_VERSION = "1.0.0";
+var APP_VERSION = "1.0.1";
 var UPDATE_VERSION_URL = "https://raw.githubusercontent.com/JeremyShanebrook/Convertible-Top-Pricing/main/version.json";
 var UPDATE_PRICES_URL = "https://raw.githubusercontent.com/JeremyShanebrook/Convertible-Top-Pricing/main/price-updates.json";
 var UPDATE_REPO_BASE = "https://raw.githubusercontent.com/JeremyShanebrook/Convertible-Top-Pricing/main/";
