@@ -1,10 +1,10 @@
 {
   "app": "Convertible Top Pricing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "catalog_rows": 19450,
-  "catalog_date": "2026-11-16",
+  "catalog_date": "2026-11-17",
   "app_changed": true,
   "desktop_download": "ConvertibleTopPricing-Desktop.html",
-  "android_apk": "https://github.com/JeremyShanebrook/Convertible-Top-Pricing/releases/download/v1.0.0/ConvertibleTopPricing-v1.0.0-code1.apk",
-  "release_notes": "Style labels: original-style-first sorting, style / rain-rail / drip-rail lines on preview cards. New: desktop update checker and first Android release (checks GitHub on launch and in Settings; applies monthly price updates)."
+  "android_apk": "https://github.com/JeremyShanebrook/Convertible-Top-Pricing/releases/download/v1.0.1/ConvertibleTopPricing-v1.0.1-code2.apk",
+  "release_notes": "One card per supplier per vehicle with cascading dropdowns: pick a top style, material, or window type and incompatible options disappear from the other dropdowns (one-piece tops hide the zipper choice; plastic vs glass, heated vs non-heated filter with everything else). Applies to every top with multiple types; single-type tops show a decided line. No prices or labor changed."
 }
