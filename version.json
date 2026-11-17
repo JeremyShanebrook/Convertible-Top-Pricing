@@ -3,5 +3,7 @@
   "version": "1.0.0",
   "catalog_rows": 19450,
   "catalog_date": "2026-11-16",
-  "release_notes": "Style labels: original-style-first sorting, style / rain-rail / drip-rail lines on preview cards."
+  "app_changed": true,
+  "desktop_download": "ConvertibleTopPricing-Desktop.html",
+  "release_notes": "Style labels: original-style-first sorting, style / rain-rail / drip-rail lines on preview cards. New: desktop update checker (checks GitHub on launch and in Settings; applies monthly price updates)."
 }
